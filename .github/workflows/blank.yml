@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Disable Windows Defender
-      # Menonaktifkan pemantauan real-time
+      # Menonaktifkan pemantauan real-time agar performa maksimal
       run: |
         Write-Host "Menonaktifkan Microsoft Defender..."
         Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
@@ -63,27 +63,25 @@ jobs:
       shell: powershell
 
     - name: Install Python 3.12
-      # MODIFIKASI: Menginstal spesifik Python 3.12 via Chocolatey
+      # MODIFIKASI: Hanya install Python 3.12 (Tanpa reinstall Chocolatey)
       run: |
         Write-Host "Memulai instalasi Python 3.12..."
         
-        # 1. Install Chocolatey
-        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        # Kita langsung gunakan choco yang sudah ada di windows-latest
+        # --version 3.12.0 memaksa versi spesifik
+        Write-Host "Menginstal Python 3.12.0..."
+        choco install python --version 3.12.0 -y --force --no-progress
         
-        Write-Host "Menunggu Chocolatey siap..."
-        Start-Sleep -Seconds 5
-
-        # 2. Install Python 3.12 (Memaksa versi 3.12.x)
-        # Kita menggunakan --version untuk memastikan yang terinstall adalah keluarga 3.12
-        Write-Host "Menginstal Python 3.12..."
-        choco install python --version 3.12.0 -y --force --allow-downgrade
+        # Memastikan path terbaca (refresh environment dasar)
+        $env:Path = "C:\Python312;C:\Python312\Scripts;$env:Path"
         
-        # 3. Upgrade pip (Opsional, tapi disarankan)
+        Write-Host "Verifikasi versi Python..."
+        python --version
+        
         Write-Host "Mengupgrade PIP..."
         python -m pip install --upgrade pip
         
         Write-Host "INSTALASI PYTHON 3.12 SELESAI."
-        python --version
       shell: powershell
 
     - name: Install Tailscale
@@ -101,7 +99,7 @@ jobs:
       shell: powershell
 
     - name: Establish Tailscale Connection
-      # Pastikan secrets.TAILSCALE_AUTH_KEY sudah ada di Repo Settings -> Secrets
+      # Pastikan secrets.TAILSCALE_AUTH_KEY sudah diset
       run: |
         Write-Host "Menyambungkan ke Tailscale..."
         $hostname = "gh-rdp-py312-$env:GITHUB_RUN_ID"
@@ -110,7 +108,7 @@ jobs:
         & $tsPath up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname --accept-routes
         
         $tsIP = $null
-        $maxRetries = 15
+        $maxRetries = 20
         $retryCount = 0
         while (-not $tsIP -and $retryCount -lt $maxRetries) {
           Start-Sleep -Seconds 5
@@ -141,7 +139,6 @@ jobs:
       shell: powershell
 
     - name: Display Connection Information
-      # MODIFIKASI: Update tampilan info ke Python 3.12
       run: |
         $border = "=" * 60
         Write-Host "`n$border"
@@ -153,7 +150,7 @@ jobs:
         Write-Host "  Password       : $env:RDP_PASSWORD"
         Write-Host "$border"
         Write-Host "  PERANGKAT LUNAK SIAP PAKAI:"
-        Write-Host "  - Python 3.12 (Installed via Chocolatey)"
+        Write-Host "  - Python 3.12 (Fixed Version)"
         Write-Host "  - Pip (Upgraded)"
         Write-Host "$border"
         Write-Host "  PENTING: JANGAN TUTUP JOB GITHUB ACTIONS INI."

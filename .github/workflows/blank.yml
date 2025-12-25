@@ -1,4 +1,4 @@
-name: RDP Setup (Python Only)
+name: RDP Setup (Python 3.12 Only)
 
 on:
   workflow_dispatch: # Memungkinkan trigger manual
@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Disable Windows Defender
-      # Menonaktifkan pemantauan real-time sesuai permintaan
+      # Menonaktifkan pemantauan real-time
       run: |
         Write-Host "Menonaktifkan Microsoft Defender..."
         Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
@@ -22,7 +22,7 @@ jobs:
       shell: powershell
 
     - name: Configure Core RDP Settings
-      # Mengaktifkan RDP dan menonaktifkan NLA (sesuai permintaan "tanpa halangan")
+      # Mengaktifkan RDP dan menonaktifkan NLA
       run: |
         Write-Host "Mengkonfigurasi RDP..."
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
@@ -38,11 +38,10 @@ jobs:
       shell: powershell
 
     - name: Create RDP User
-      # Menggunakan username dan password tetap sesuai permintaan
-      # PERINGATAN: Ini tidak aman. Sebaiknya gunakan GitHub Secrets.
+      # Menggunakan username dan password tetap
       run: |
         $username = "RDP"
-        $password = "Igede123456@" # Sesuai permintaan
+        $password = "Igede123456@" 
         Write-Host "Membuat user RDP: $username"
 
         if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
@@ -63,10 +62,10 @@ jobs:
         echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
       shell: powershell
 
-    - name: Install Python 3
-      # MODIFIKASI: Hanya menginstal Python
+    - name: Install Python 3.12
+      # MODIFIKASI: Menginstal spesifik Python 3.12 via Chocolatey
       run: |
-        Write-Host "Memulai instalasi Python 3..."
+        Write-Host "Memulai instalasi Python 3.12..."
         
         # 1. Install Chocolatey
         Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
@@ -74,12 +73,17 @@ jobs:
         Write-Host "Menunggu Chocolatey siap..."
         Start-Sleep -Seconds 5
 
-        # 2. Install software (HANYA PYTHON)
-        Write-Host "Menginstal Python 3 (Terbaru)..."
-        choco install python -y
+        # 2. Install Python 3.12 (Memaksa versi 3.12.x)
+        # Kita menggunakan --version untuk memastikan yang terinstall adalah keluarga 3.12
+        Write-Host "Menginstal Python 3.12..."
+        choco install python --version 3.12.0 -y --force --allow-downgrade
         
-        Write-Host "INSTALASI PYTHON 3 SELESAI."
-        Write-Host "Python 3 (Terbaru) sekarang tersedia di RDP."
+        # 3. Upgrade pip (Opsional, tapi disarankan)
+        Write-Host "Mengupgrade PIP..."
+        python -m pip install --upgrade pip
+        
+        Write-Host "INSTALASI PYTHON 3.12 SELESAI."
+        python --version
       shell: powershell
 
     - name: Install Tailscale
@@ -97,15 +101,14 @@ jobs:
       shell: powershell
 
     - name: Establish Tailscale Connection
-      # Menggunakan Auth Key dari Secrets untuk koneksi aman
+      # Pastikan secrets.TAILSCALE_AUTH_KEY sudah ada di Repo Settings -> Secrets
       run: |
         Write-Host "Menyambungkan ke Tailscale..."
-        $hostname = "gh-rdp-$env:GITHUB_RUN_ID"
+        $hostname = "gh-rdp-py312-$env:GITHUB_RUN_ID"
         $tsPath = "$env:ProgramFiles\Tailscale\tailscale.exe"
         
         & $tsPath up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname --accept-routes
         
-        # Retry loop untuk mendapatkan IP Tailscale
         $tsIP = $null
         $maxRetries = 15
         $retryCount = 0
@@ -117,8 +120,7 @@ jobs:
         }
 
         if (-not $tsIP) {
-          Write-Error "Gagal mendapatkan IP Tailscale setelah $maxRetries percobaan."
-          & $tsPath status
+          Write-Error "Gagal mendapatkan IP Tailscale."
           exit 1
         }
         
@@ -130,9 +132,6 @@ jobs:
     - name: Verify RDP Accessibility
       run: |
         Write-Host "Memverifikasi konektivitas RDP..."
-        Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-        Write-Host "Hostname: $env:RDP_HOSTNAME"
-        
         $remoteTest = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389 -WarningAction SilentlyContinue
         if ($remoteTest.TcpTestSucceeded) {
           Write-Host "✅ Tes konektivitas RDP via Tailscale berhasil!"
@@ -142,11 +141,11 @@ jobs:
       shell: powershell
 
     - name: Display Connection Information
-      # MODIFIKASI: Hanya menampilkan Python di daftar software
+      # MODIFIKASI: Update tampilan info ke Python 3.12
       run: |
         $border = "=" * 60
         Write-Host "`n$border"
-        Write-Host "           INFORMASI AKSES RDP (PYTHON ONLY)"
+        Write-Host "           INFORMASI AKSES RDP (PYTHON 3.12)"
         Write-Host "$border"
         Write-Host "  Address (IP)   : $env:TAILSCALE_IP"
         Write-Host "  Hostname       : $env:RDP_HOSTNAME"
@@ -154,30 +153,24 @@ jobs:
         Write-Host "  Password       : $env:RDP_PASSWORD"
         Write-Host "$border"
         Write-Host "  PERANGKAT LUNAK SIAP PAKAI:"
-        Write-Host "  - Python 3 (Terbaru)"
+        Write-Host "  - Python 3.12 (Installed via Chocolatey)"
+        Write-Host "  - Pip (Upgraded)"
         Write-Host "$border"
         Write-Host "  PENTING: JANGAN TUTUP JOB GITHUB ACTIONS INI."
-        Write-Host "  Biarkan workflow ini tetap berjalan untuk menjaga sesi."
-        Write-Host "  Batalkan/Stop workflow jika sudah selesai."
         Write-Host "$border`n"
       shell: powershell
 
     - name: Maintain Active Connection (Keep-Alive)
-      # Loop untuk menjaga runner tetap aktif
       run: |
         $counter = 0
         while ($true) {
           $counter++
           $currentTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
           Write-Host "[$currentTime] Sesi RDP Aktif - Siklus: $counter"
-          Write-Host " ↳ IP: $env:TAILSCALE_IP | User: $env:RDP_USERNAME"
           
           if ($counter % 3 -eq 0) {
-            Write-Host " ↳ Memeriksa status Tailscale..."
             & "$env:ProgramFiles\Tailscale\tailscale.exe" status
           }
-          
-          # Interval keep-alive (5 menit)
           Start-Sleep -Seconds 300
         }
       shell: powershell

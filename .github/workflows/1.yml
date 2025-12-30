@@ -1,0 +1,118 @@
+name: Windows in Ubuntu (Auto Install Python + No Defender)
+
+on: workflow_dispatch
+
+jobs:
+  win-docker-tailscale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # Max 6 jam
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # 1. SIAPKAN SCRIPT INSTALLER (Akan dijalankan DI DALAM Windows)
+    # Script ini otomatis mematikan Defender, Install Python 3.12, dan Runtime
+    - name: Create Install Script for Windows
+      run: |
+        cat <<EOF > install.bat
+        @echo off
+        echo "==================================================="
+        echo "SEDANG MEMATIKAN WINDOWS DEFENDER & ANTIVIRUS..."
+        echo "==================================================="
+        powershell -Command "Set-MpPreference -DisableRealtimeMonitoring \$true"
+        powershell -Command "Set-MpPreference -DisableBehaviorMonitoring \$true"
+        powershell -Command "Set-MpPreference -DisableIOAVProtection \$true"
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender" /v DisableAntiSpyware /t REG_DWORD /d 1 /f
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" /v DisableBehaviorMonitoring /t REG_DWORD /d 1 /f
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" /v DisableOnAccessProtection /t REG_DWORD /d 1 /f
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection" /v DisableScanOnRealtimeEnable /t REG_DWORD /d 1 /f
+        
+        echo "==================================================="
+        echo "SEDANG DOWNLOAD & INSTALL PYTHON 3.12..."
+        echo "==================================================="
+        powershell -Command "Invoke-WebRequest 'https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe' -OutFile 'C:\python-installer.exe'"
+        start /wait C:\python-installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
+        del C:\python-installer.exe
+        
+        echo "==================================================="
+        echo "SEDANG INSTALL VISUAL C++ RUNTIMES (AIO)..."
+        echo "==================================================="
+        REM Download VC++ 2015-2022 Redistributable (x64)
+        powershell -Command "Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile 'C:\vc_redist.x64.exe'"
+        start /wait C:\vc_redist.x64.exe /install /passive /norestart
+        del C:\vc_redist.x64.exe
+        
+        echo "==================================================="
+        echo "SEMUA INSTALASI SELESAI!"
+        echo "==================================================="
+        EOF
+      shell: bash
+
+    # 2. Bersihkan Disk
+    - name: Free Disk Space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo docker image prune --all --force
+
+    # 3. Install Tailscale
+    - name: Install Tailscale
+      run: |
+        curl -fsSL https://tailscale.com/install.sh | sh
+        sudo service tailscaled start
+
+    # 4. Login Tailscale (INTERAKTIF)
+    - name: Login Tailscale (CEK LOG UNTUK LINK)
+      run: |
+        echo "========================================================"
+        echo "SILAHKAN CEK LOG UNTUK LINK LOGIN TAILSCALE"
+        echo "========================================================"
+        sudo tailscale up --hostname="github-win-python"
+
+    # 5. Jalankan Windows di Docker
+    # Perhatikan baris '-v $(pwd):/storage'. Ini memasukkan install.bat ke dalam Windows.
+    - name: Start Windows Container
+      run: |
+        chmod +x install.bat
+        docker run -d --name windows \
+          --device=/dev/kvm \
+          --cap-add NET_ADMIN \
+          -p 3389:3389 \
+          -p 8006:8006 \
+          -v $(pwd):/storage \
+          -e RAM_SIZE="7G" \
+          -e CPU_CORES="4" \
+          -e VERSION="win11" \
+          -e USERNAME="RDP" \
+          -e PASSWORD="Igede1234@" \
+          dockur/windows
+
+    # 6. Tunggu Windows Booting
+    - name: Wait for Windows Boot
+      run: |
+        echo "Menunggu Windows booting, Install Python & Config..."
+        echo "Proses ini butuh waktu 10-15 menit."
+        timeout 1200 bash -c 'until echo > /dev/tcp/localhost/3389; do sleep 30; done'
+        echo "Windows RDP Port Open!"
+
+    # 7. Tampilkan Info Koneksi
+    - name: Show Connection Info
+      run: |
+        TS_IP=$(tailscale ip -4)
+        echo "==================================================="
+        echo "STATUS: READY"
+        echo "IP Tailscale Host: $TS_IP"
+        echo "Username : RDP"
+        echo "Password : Igede1234@"
+        echo "---------------------------------------------------"
+        echo "NOTE: Saat pertama kali masuk RDP, mungkin Python"
+        echo "sedang proses install di background. Tunggu 1-2 menit"
+        echo "jika CMD/Terminal Python belum bisa dipanggil."
+        echo "==================================================="
+
+    # 8. Keep Alive
+    - name: Keep Alive
+      run: |
+        echo "Sesi aktif. Tekan Cancel Workflow untuk berhenti."
+        while true; do sleep 60; done

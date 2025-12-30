@@ -1,4 +1,4 @@
-name: Windows in Ubuntu (Auto Install Python + No Defender)
+name: Windows in Ubuntu (FIXED Image Source)
 
 on: workflow_dispatch
 
@@ -11,8 +11,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # 1. SIAPKAN SCRIPT INSTALLER (Akan dijalankan DI DALAM Windows)
-    # Script ini otomatis mematikan Defender, Install Python 3.12, dan Runtime
+    # 1. SIAPKAN SCRIPT INSTALLER (Jalan di dalam Windows)
     - name: Create Install Script for Windows
       run: |
         cat <<EOF > install.bat
@@ -38,7 +37,6 @@ jobs:
         echo "==================================================="
         echo "SEDANG INSTALL VISUAL C++ RUNTIMES (AIO)..."
         echo "==================================================="
-        REM Download VC++ 2015-2022 Redistributable (x64)
         powershell -Command "Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile 'C:\vc_redist.x64.exe'"
         start /wait C:\vc_redist.x64.exe /install /passive /norestart
         del C:\vc_redist.x64.exe
@@ -62,16 +60,16 @@ jobs:
         curl -fsSL https://tailscale.com/install.sh | sh
         sudo service tailscaled start
 
-    # 4. Login Tailscale (INTERAKTIF)
+    # 4. Login Tailscale (Manual Link)
     - name: Login Tailscale (CEK LOG UNTUK LINK)
       run: |
         echo "========================================================"
         echo "SILAHKAN CEK LOG UNTUK LINK LOGIN TAILSCALE"
         echo "========================================================"
+        # Menggunakan sudo -E agar env variable terbawa jika perlu
         sudo tailscale up --hostname="github-win-python"
 
-    # 5. Jalankan Windows di Docker
-    # Perhatikan baris '-v $(pwd):/storage'. Ini memasukkan install.bat ke dalam Windows.
+    # 5. Jalankan Windows di Docker (FIXED: Pakai ghcr.io)
     - name: Start Windows Container
       run: |
         chmod +x install.bat
@@ -86,7 +84,8 @@ jobs:
           -e VERSION="win11" \
           -e USERNAME="RDP" \
           -e PASSWORD="Igede1234@" \
-          dockur/windows
+          ghcr.io/dockur/windows
+      # PERUBAHAN DI SINI: dockur/windows diganti jadi ghcr.io/dockur/windows
 
     # 6. Tunggu Windows Booting
     - name: Wait for Windows Boot
@@ -106,9 +105,8 @@ jobs:
         echo "Username : RDP"
         echo "Password : Igede1234@"
         echo "---------------------------------------------------"
-        echo "NOTE: Saat pertama kali masuk RDP, mungkin Python"
-        echo "sedang proses install di background. Tunggu 1-2 menit"
-        echo "jika CMD/Terminal Python belum bisa dipanggil."
+        echo "NOTE: Python sedang diinstall otomatis di background."
+        echo "Tunggu 1-2 menit setelah login agar CMD bisa akses 'python'."
         echo "==================================================="
 
     # 8. Keep Alive
